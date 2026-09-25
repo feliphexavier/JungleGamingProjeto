@@ -199,15 +199,65 @@ DATABASE_URL="postgres://apostas:apostas@localhost:5433/apostas?sslmode=disable"
 ## Estrutura
 
 ```
-cmd/api            entrada da aplicação (Fx)
-cmd/migrate        migrations (goose)
-internal/domain    regras de negócio, dinheiro, eventos (sem dependências de infraestrutura)
-internal/app       casos de uso e portas (Store, EventPublisher); relay da outbox
-internal/infra     postgres (pgx, SQL explícito), httpapi (chi), auth (OIDC), sqs
-internal/bootstrap módulos Fx e ciclo de vida
-internal/worker    laço de worker com encerramento observável
-internal/e2e       testes contra as 3 instâncias
-migrations/        SQL das migrations
-deploy/            realm do Keycloak e criação das filas
-postman/           collection para testes manuais
+.
+├── cmd/
+│   ├── api/
+│   │   └── main.go                  # entrada da aplicação: carrega a config e roda o Fx
+│   └── migrate/
+│       └── main.go                  # migrations com goose (up, down, status)
+├── internal/
+│   ├── domain/                      # regras de negócio, sem dependência de infraestrutura
+│   │   ├── money.go                 # dinheiro em int64 (centavos), parsing de string decimal
+│   │   ├── wallet.go                # carteira: saldo, versão, débito e crédito
+│   │   ├── transaction.go           # transação de aposta e seus estados
+│   │   ├── process.go               # regras de BET, WIN, LOSS, REFUND, ROLLBACK
+│   │   ├── ledger.go                # lançamentos do ledger
+│   │   ├── events.go                # eventos de integração e envelope
+│   │   ├── idempotency.go           # hash canônico do payload
+│   │   ├── failure.go, errors.go    # códigos de rejeição e erros de domínio
+│   │   └── *_test.go                # testes de unidade
+│   ├── app/                         # casos de uso; depende só de interfaces
+│   │   ├── ports.go                 # Store, repositórios, EventPublisher, Clock
+│   │   ├── wallet.go                # abrir carteira
+│   │   ├── wager.go                 # SubmitWager (HTTP e SQS)
+│   │   ├── pending.go               # retomada de operações aguardando referência
+│   │   ├── queries.go               # consultas, ledger paginado, reconciliação
+│   │   ├── outbox.go                # relay da transactional outbox
+│   │   ├── service.go, errors.go
+│   │   └── *_test.go                # integração com PostgreSQL real
+│   ├── infra/
+│   │   ├── postgres/                # pgx com SQL explícito, locks e outbox/inbox
+│   │   ├── httpapi/                 # rotas chi, autenticação, erros, DTOs
+│   │   ├── auth/                    # validação de JWT (OIDC/JWKS)
+│   │   │   └── authtest/            # emissor local para testes de tokens inválidos
+│   │   └── sqs/                     # cliente, consumidor e publicador SQS
+│   ├── bootstrap/
+│   │   └── modules.go               # módulos Fx e ciclo de vida (início e shutdown)
+│   ├── config/
+│   │   └── config.go                # leitura e validação das variáveis de ambiente
+│   ├── worker/
+│   │   └── loop.go                  # laço de worker com encerramento observável
+│   ├── e2e/
+│   │   └── multi_instance_test.go   # testes contra as 3 instâncias do Compose
+│   └── testsupport/                 # banco, filas e tokens descartáveis para testes
+│       ├── pgtest/
+│       ├── sqstest/
+│       └── kctest/
+├── migrations/
+│   ├── 20260925165927_init_schema.sql
+│   ├── 20260925200000_outbox_publish_order.sql
+│   └── embed.go                     # migrations embutidas no binário
+├── deploy/
+│   ├── keycloak/
+│   │   └── wallet-realm.json        # realm, clients e papéis importados na subida
+│   └── localstack/
+│       └── init-queues.sh           # criação das filas SQS
+├── postman/
+│   └── jungle-wallet.postman_collection.json
+├── docker-compose.yml               # postgres, keycloak, localstack, migrate, 3 instâncias da API
+├── Dockerfile                       # build em dois estágios, runtime distroless não root
+├── Makefile                         # atalhos opcionais
+├── .env.example                     # variáveis de configuração com valores locais
+├── ARCHITECTURE.md                  # decisões de projeto
+└── README.md
 ```
