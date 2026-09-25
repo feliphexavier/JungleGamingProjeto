@@ -99,6 +99,10 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 			slog.Duration("duration", time.Since(start)),
 			slog.String("correlationId", correlationID(r.Context())),
 		}
+		if route == "" {
+			// Sem rota correspondente: registra o caminho pedido (sem query string).
+			attrs = append(attrs, slog.String("path", truncate(r.URL.Path, 200)))
+		}
 		s.log.InfoContext(r.Context(), "http request", attrs...)
 	})
 }
@@ -120,4 +124,11 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n] + "…"
+	}
+	return s
 }

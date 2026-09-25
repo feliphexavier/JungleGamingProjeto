@@ -4,6 +4,27 @@
     "description": "Testes manuais da API de carteiras contra o ambiente do Docker Compose.\n\nPré-requisito: `docker compose up --build`.\n\nOrdem sugerida: execute as pastas de cima para baixo (ou use o Collection Runner). Os tokens, o id da carteira e os ids das operações são salvos automaticamente em variáveis da collection.\n\nPortas: API 8080, Keycloak 8081, LocalStack (SQS) 4566.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "event": [
+    { "listen": "prerequest", "script": { "exec": [
+      "// Impede enviar requisições com variáveis ainda vazias (URL incompleta vira 404, token vazio vira 401).",
+      "const needs = {",
+      "  tokenInternal: 'Execute a pasta \"1. Tokens\" primeiro.',",
+      "  tokenProviderA: 'Execute a pasta \"1. Tokens\" primeiro.',",
+      "  tokenProviderB: 'Execute a pasta \"1. Tokens\" primeiro.',",
+      "  tokenUntrusted: 'Execute a pasta \"1. Tokens\" primeiro.',",
+      "  walletId: 'Execute \"2. Carteira > Abrir carteira com 100.00\" primeiro.',",
+      "  transactionId: 'Execute \"3. Operações do provedor > BET 25.00\" primeiro.',",
+      "  betId: 'Execute \"3. Operações do provedor > BET 25.00\" primeiro.'",
+      "};",
+      "const raw = JSON.stringify(pm.request.toJSON());",
+      "for (const [name, hint] of Object.entries(needs)) {",
+      "  if (name === 'betId' && pm.info.requestName === 'BET 25.00') continue; // essa requisição gera o betId",
+      "  if (raw.includes('{{' + name + '}}') && !pm.collectionVariables.get(name)) {",
+      "    throw new Error('Variável ' + name + ' vazia. ' + hint);",
+      "  }",
+      "}"
+    ] } }
+  ],
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
     { "key": "kcUrl", "value": "http://localhost:8081/realms/wallet/protocol/openid-connect/token" },

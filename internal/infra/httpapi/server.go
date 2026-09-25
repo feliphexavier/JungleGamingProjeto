@@ -3,6 +3,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -39,10 +40,14 @@ func (s *Server) Handler() http.Handler {
 	r.Use(withCorrelation, s.recoverer, s.accessLog)
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusNotFound, errorBody{Error: errorDetail{Code: CodeNotFound, Message: "rota inexistente"}})
+		writeJSON(w, http.StatusNotFound, errorBody{Error: errorDetail{
+			Code: CodeNotFound, Message: fmt.Sprintf("rota inexistente: %s %s", r.Method, truncate(r.URL.Path, 200)), CorrelationID: correlationID(r.Context()),
+		}})
 	})
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusMethodNotAllowed, errorBody{Error: errorDetail{Code: CodeNotFound, Message: "método não permitido"}})
+		writeJSON(w, http.StatusMethodNotAllowed, errorBody{Error: errorDetail{
+			Code: CodeNotFound, Message: fmt.Sprintf("método não permitido: %s %s", r.Method, truncate(r.URL.Path, 200)), CorrelationID: correlationID(r.Context()),
+		}})
 	})
 
 	r.Get("/health/live", s.live)
