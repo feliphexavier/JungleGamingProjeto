@@ -1,3 +1,31 @@
+# Configuração comum das instâncias da API.
+x-api: &api
+  image: jungle-wallet:local
+  build: .
+  environment:
+    HTTP_PORT: "8080"
+    DATABASE_URL: postgres://apostas:apostas@postgres:5432/apostas?sslmode=disable
+    OIDC_ISSUER: http://localhost:8081/realms/wallet
+    OIDC_JWKS_URL: http://keycloak:8080/realms/wallet/protocol/openid-connect/certs
+    OIDC_AUDIENCE: wallet-api
+    SHUTDOWN_TIMEOUT: 20s
+    AWS_REGION: us-east-1
+    AWS_ACCESS_KEY_ID: test
+    AWS_SECRET_ACCESS_KEY: test
+    SQS_ENDPOINT: http://localstack:4566
+    SQS_INBOUND_QUEUE: wager-operations.fifo
+    SQS_DLQ: wager-operations-dlq.fifo
+    SQS_EVENTS_QUEUE: wallet-events.fifo
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    keycloak:
+      condition: service_healthy
+    localstack:
+      condition: service_healthy
+  # Tempo entre SIGTERM e SIGKILL: maior que SHUTDOWN_TIMEOUT.
+  stop_grace_period: 30s
+
 services:
   postgres:
     image: postgres:16
@@ -64,6 +92,7 @@ services:
 
   # Aplica as migrations e termina; a API só sobe depois que ele conclui.
   migrate:
+    image: jungle-wallet:local
     build: .
     entrypoint: ["/app/migrate", "up"]
     environment:
@@ -73,33 +102,23 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Três instâncias independentes (processos e containers separados) sobre o
+  # mesmo PostgreSQL e as mesmas filas: nenhuma garantia depende de estado em
+  # memória. Todas atendem HTTP, consomem o SQS e publicam a outbox.
   api:
-    build: .
-    environment:
-      HTTP_PORT: "8080"
-      DATABASE_URL: postgres://apostas:apostas@postgres:5432/apostas?sslmode=disable
-      OIDC_ISSUER: http://localhost:8081/realms/wallet
-      OIDC_JWKS_URL: http://keycloak:8080/realms/wallet/protocol/openid-connect/certs
-      OIDC_AUDIENCE: wallet-api
-      SHUTDOWN_TIMEOUT: 20s
-      AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      SQS_ENDPOINT: http://localstack:4566
-      SQS_INBOUND_QUEUE: wager-operations.fifo
-      SQS_DLQ: wager-operations-dlq.fifo
-      SQS_EVENTS_QUEUE: wallet-events.fifo
+    <<: *api
     ports:
       - "8080:8080"
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      keycloak:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
-    # Tempo entre SIGTERM e SIGKILL: maior que SHUTDOWN_TIMEOUT.
-    stop_grace_period: 30s
+
+  api-2:
+    <<: *api
+    ports:
+      - "8082:8080"
+
+  api-3:
+    <<: *api
+    ports:
+      - "8083:8080"
 
 volumes:
   pgdata:
