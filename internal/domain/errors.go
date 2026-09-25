@@ -14,3 +14,12 @@ var (
 	ErrCurrencyMismatch = errors.New("currency mismatch")
 	ErrUninitialized    = errors.New("uninitialized value")
 )
+
+// Erros de carteira e ledger.
+var (
+	ErrInvalidWallet      = errors.New("invalid wallet")
+	ErrInvalidLedgerEntry = errors.New("invalid ledger entry")
+	ErrNonPositiveAmount  = errors.New("amount must be positive")
+	ErrInsufficientFunds  = errors.New("insufficient funds")
+	ErrVersionOverflow    = errors.New("wallet version overflow")
+)
