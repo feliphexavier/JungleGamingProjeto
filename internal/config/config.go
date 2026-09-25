@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/feliphexavier/jungleGamingProjeto/internal/infra/auth"
+	sqsinfra "github.com/feliphexavier/jungleGamingProjeto/internal/infra/sqs"
 )
 
 type Config struct {
@@ -23,6 +24,18 @@ type Config struct {
 	// Worker de referências pendentes.
 	PendingInterval  time.Duration
 	PendingBatchSize int
+
+	// SQS: consumo de operações e publicação de eventos.
+	SQS                 sqsinfra.Config
+	ConsumerWait        time.Duration
+	ConsumerMaxMessages int
+	ConsumerTimeout     time.Duration
+
+	// Publicação da outbox.
+	OutboxInterval   time.Duration
+	OutboxBatchSize  int
+	OutboxLease      time.Duration
+	OutboxMaxBackoff time.Duration
 }
 
 // Load lê o ambiente. Qualquer valor ausente ou inválido impede a subida.
@@ -65,6 +78,20 @@ func Load() (Config, error) {
 		ShutdownTimeout:  duration("SHUTDOWN_TIMEOUT", "20s"),
 		PendingInterval:  duration("PENDING_REFERENCE_INTERVAL", "1s"),
 		PendingBatchSize: positive("PENDING_REFERENCE_BATCH", "100"),
+		SQS: sqsinfra.Config{
+			Endpoint:     get("SQS_ENDPOINT", ""),
+			Region:       get("AWS_REGION", ""),
+			InboundQueue: get("SQS_INBOUND_QUEUE", ""),
+			DLQ:          get("SQS_DLQ", ""),
+			EventsQueue:  get("SQS_EVENTS_QUEUE", ""),
+		},
+		ConsumerWait:        duration("SQS_WAIT_TIME", "10s"),
+		ConsumerMaxMessages: positive("SQS_MAX_MESSAGES", "10"),
+		ConsumerTimeout:     duration("SQS_PROCESS_TIMEOUT", "15s"),
+		OutboxInterval:      duration("OUTBOX_INTERVAL", "500ms"),
+		OutboxBatchSize:     positive("OUTBOX_BATCH", "100"),
+		OutboxLease:         duration("OUTBOX_LEASE", "30s"),
+		OutboxMaxBackoff:    duration("OUTBOX_MAX_BACKOFF", "5m"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -72,6 +99,15 @@ func Load() (Config, error) {
 	}
 	if err := cfg.OIDC.Validate(); err != nil {
 		errs = append(errs, err)
+	}
+	if err := cfg.SQS.Validate(); err != nil {
+		errs = append(errs, err)
+	}
+	if cfg.ConsumerWait > 20*time.Second {
+		errs = append(errs, errors.New("SQS_WAIT_TIME: máximo 20s"))
+	}
+	if cfg.ConsumerMaxMessages > 10 {
+		errs = append(errs, errors.New("SQS_MAX_MESSAGES: máximo 10"))
 	}
 	if err := cfg.LogLevel.UnmarshalText([]byte(strings.ToUpper(get("LOG_LEVEL", "INFO")))); err != nil {
 		errs = append(errs, errors.New("LOG_LEVEL inválido"))

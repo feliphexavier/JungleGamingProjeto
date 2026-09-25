@@ -87,6 +87,21 @@ type LedgerRepository interface {
 
 type OutboxRepository interface {
 	Insert(ctx context.Context, events []domain.Event) error
+
+	// Claim reserva (lease) até limit eventos pendentes para owner, em ordem
+	// de gravação. Para cada carteira, reserva só um prefixo contínuo dos
+	// pendentes, e nunca uma carteira que tenha reserva ativa de outra
+	// instância. Deve rodar dentro de InTx.
+	Claim(ctx context.Context, owner string, now time.Time, lease time.Duration, limit int) ([]OutboxMessage, error)
+
+	// MarkPublished conclui o evento se a reserva ainda for de owner.
+	MarkPublished(ctx context.Context, id uuid.UUID, owner string, at time.Time) error
+
+	// MarkFailed registra a falha, agenda nova tentativa e libera a reserva.
+	MarkFailed(ctx context.Context, id uuid.UUID, owner string, nextAttempt time.Time, reason string) error
+
+	// Release devolve eventos reservados sem contar tentativa.
+	Release(ctx context.Context, ids []uuid.UUID, owner string) error
 }
 
 // InboxMessage identifica uma mensagem consumida.

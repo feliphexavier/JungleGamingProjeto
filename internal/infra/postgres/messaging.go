@@ -1,10 +1,12 @@
 package postgres
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -91,4 +93,93 @@ func (r inboxRepo) MarkProcessed(ctx context.Context, m app.InboxMessage, transa
 		return fmt.Errorf("%w: inbox %s já concluída", app.ErrConcurrentUpdate, m.MessageID)
 	}
 	return nil
+}
+
+// outboxClaimLockKey serializa as reservas entre instâncias (lock de
+// transação, liberado no commit). A reserva é uma consulta curta; a publicação
+// acontece depois, em paralelo entre instâncias.
+const outboxClaimLockKey int64 = 0x6f7574626f78 // "outbox"
+
+// Claim reserva um prefixo contínuo dos pendentes de cada carteira:
+//   - a carteira não pode ter reserva ativa (de qualquer instância), senão
+//     duas instâncias publicariam eventos da mesma carteira fora de ordem;
+//   - nenhum evento anterior da carteira pode estar aguardando nova tentativa;
+//   - ORDER BY seq com LIMIT mantém o prefixo mesmo quando o lote corta a carteira.
+func (r outboxRepo) Claim(ctx context.Context, owner string, now time.Time, lease time.Duration, limit int) ([]app.OutboxMessage, error) {
+	if _, err := r.db.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, outboxClaimLockKey); err != nil {
+		return nil, mapError(err)
+	}
+	rows, err := r.db.Query(ctx, `
+		WITH candidates AS (
+			SELECT o.id
+			  FROM outbox_events o
+			 WHERE o.published_at IS NULL
+			   AND o.next_attempt_at <= $2
+			   AND NOT EXISTS (
+			       SELECT 1 FROM outbox_events l
+			        WHERE l.message_group_id = o.message_group_id
+			          AND l.published_at IS NULL
+			          AND l.locked_until > $2)
+			   AND NOT EXISTS (
+			       SELECT 1 FROM outbox_events p
+			        WHERE p.message_group_id = o.message_group_id
+			          AND p.published_at IS NULL
+			          AND p.seq < o.seq
+			          AND p.next_attempt_at > $2)
+			 ORDER BY o.seq
+			 LIMIT $4
+			   FOR UPDATE SKIP LOCKED
+		)
+		UPDATE outbox_events e
+		   SET locked_by = $1, locked_until = $3
+		  FROM candidates c
+		 WHERE e.id = c.id
+		RETURNING e.id, e.message_group_id, e.event_type, e.payload, e.attempts, e.seq`,
+		owner, now, now.Add(lease), limit)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	msgs, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (app.OutboxMessage, error) {
+		var m app.OutboxMessage
+		err := row.Scan(&m.ID, &m.GroupID, &m.EventType, &m.Payload, &m.Attempts, &m.Seq)
+		return m, err
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	slices.SortFunc(msgs, func(a, b app.OutboxMessage) int { return cmp.Compare(a.Seq, b.Seq) })
+	return msgs, nil
+}
+
+func (r outboxRepo) MarkPublished(ctx context.Context, id uuid.UUID, owner string, at time.Time) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE outbox_events
+		   SET published_at = $3, locked_by = NULL, locked_until = NULL, last_error = NULL
+		 WHERE id = $1 AND locked_by = $2 AND published_at IS NULL`, id, owner, at)
+	if err != nil {
+		return mapError(err)
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("%w: reserva do evento %s perdida", app.ErrConcurrentUpdate, id)
+	}
+	return nil
+}
+
+func (r outboxRepo) MarkFailed(ctx context.Context, id uuid.UUID, owner string, nextAttempt time.Time, reason string) error {
+	if len(reason) > 1000 {
+		reason = reason[:1000]
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE outbox_events
+		   SET attempts = attempts + 1, next_attempt_at = $3, last_error = $4,
+		       locked_by = NULL, locked_until = NULL
+		 WHERE id = $1 AND locked_by = $2 AND published_at IS NULL`, id, owner, nextAttempt, reason)
+	return mapError(err)
+}
+
+func (r outboxRepo) Release(ctx context.Context, ids []uuid.UUID, owner string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE outbox_events SET locked_by = NULL, locked_until = NULL
+		 WHERE id = ANY($1) AND locked_by = $2 AND published_at IS NULL`, ids, owner)
+	return mapError(err)
 }
