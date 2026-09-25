@@ -1,16 +1,34 @@
-.PHONY: db-up db-down migrate migrate-down migrate-status
+# Atalhos opcionais; os comandos equivalentes estão no README.
+.PHONY: up down clean test test-race vet fmt migrate migrate-status
 
-db-up:
-	docker compose up -d --wait postgres
+TEST_ENV = TEST_DATABASE_URL="postgres://apostas:apostas@localhost:5433/postgres?sslmode=disable" \
+	TEST_KEYCLOAK_URL="http://localhost:8081" \
+	TEST_SQS_ENDPOINT="http://localhost:4566" \
+	TEST_API_URLS="http://localhost:8080,http://localhost:8082,http://localhost:8083"
 
-db-down:
+up:
+	docker compose up --build -d --wait
+
+down:
 	docker compose down
+
+clean:
+	docker compose down -v
+
+test:
+	$(TEST_ENV) go test ./...
+
+test-race:
+	$(TEST_ENV) go test -race ./...
+
+vet:
+	go vet ./...
+
+fmt:
+	gofmt -l .
 
 migrate:
 	go run ./cmd/migrate up
-
-migrate-down:
-	go run ./cmd/migrate down
 
 migrate-status:
 	go run ./cmd/migrate status
