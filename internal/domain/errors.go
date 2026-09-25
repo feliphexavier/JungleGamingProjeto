@@ -23,3 +23,13 @@ var (
 	ErrInsufficientFunds  = errors.New("insufficient funds")
 	ErrVersionOverflow    = errors.New("wallet version overflow")
 )
+
+// Erros de transação. São erros de entrada ou de programação: a operação não
+// chega a ser persistida. Rejeições de negócio não são erros Go; elas viram
+// uma transação REJECTED com FailureCode.
+var (
+	ErrInvalidTransaction = errors.New("invalid transaction")
+	ErrInvalidKind        = errors.New("invalid transaction kind")
+	ErrOpeningNotAllowed  = errors.New("OPENING is internal and cannot be submitted")
+	ErrInvalidTransition  = errors.New("invalid status transition")
+)

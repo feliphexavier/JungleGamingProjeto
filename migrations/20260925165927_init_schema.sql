@@ -17,9 +17,8 @@ CREATE TABLE wallets (
 
     -- Uma única carteira por (jogador, moeda).
     CONSTRAINT wallets_player_currency_uk UNIQUE (player_id, currency),
-    -- Alvos das FKs compostas que garantem jogador/moeda coerentes com a carteira.
-    CONSTRAINT wallets_id_currency_uk UNIQUE (id, currency),
-    CONSTRAINT wallets_id_player_currency_uk UNIQUE (id, player_id, currency)
+    -- Alvo da FK composta do ledger, que garante a moeda da carteira.
+    CONSTRAINT wallets_id_currency_uk UNIQUE (id, currency)
 );
 
 -- +goose StatementBegin
@@ -101,9 +100,11 @@ CREATE TABLE wager_transactions (
     updated_at   TIMESTAMPTZ NOT NULL,
     processed_at TIMESTAMPTZ,
 
-    -- Jogador e moeda precisam ser os da carteira.
-    CONSTRAINT wager_tx_wallet_fk FOREIGN KEY (wallet_id, player_id, currency)
-        REFERENCES wallets (id, player_id, currency),
+    -- Só a carteira é FK: uma operação com jogador ou moeda divergentes da
+    -- carteira precisa ser gravada como REJECTED para ser auditável e devolvida
+    -- em replays. Movimentação de saldo em moeda errada continua impossível
+    -- pela FK (wallet_id, currency) do ledger.
+    CONSTRAINT wager_tx_wallet_fk FOREIGN KEY (wallet_id) REFERENCES wallets (id),
 
     -- OPENING é interno: sem nenhum metadado externo e sempre com valor positivo.
     CONSTRAINT wager_tx_opening_shape CHECK (
