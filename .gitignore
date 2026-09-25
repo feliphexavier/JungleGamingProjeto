@@ -1,4 +1,5 @@
 /bin/
 *.env
-.env# Documento incluído apenas no commit final
+.env
+# Documento incluído apenas no commit final
 ARCHITECTURE.md
