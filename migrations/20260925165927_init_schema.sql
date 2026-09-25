@@ -353,6 +353,7 @@ CREATE TABLE outbox_events (
     event_version   INTEGER     NOT NULL CHECK (event_version >= 1),
     correlation_id  TEXT        NOT NULL CHECK (correlation_id <> ''),
     causation_id    TEXT,
+    message_group_id TEXT       NOT NULL CHECK (message_group_id <> ''), -- carteira: ordem por carteira no FIFO
     payload         JSONB       NOT NULL, -- snapshot imutável do envelope completo
     occurred_at     TIMESTAMPTZ NOT NULL,
 
@@ -386,6 +387,7 @@ BEGIN
        OR NEW.event_version <> OLD.event_version
        OR NEW.correlation_id <> OLD.correlation_id
        OR NEW.causation_id IS DISTINCT FROM OLD.causation_id
+       OR NEW.message_group_id <> OLD.message_group_id
        OR NEW.payload <> OLD.payload
        OR NEW.occurred_at <> OLD.occurred_at THEN
         RAISE EXCEPTION 'outbox_events: evento % é imutável', OLD.id
