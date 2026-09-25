@@ -261,3 +261,28 @@ DATABASE_URL="postgres://apostas:apostas@localhost:5433/apostas?sslmode=disable"
 ├── ARCHITECTURE.md                  # decisões de projeto
 └── README.md
 ```
+
+## Por que arquitetura hexagonal
+
+O código segue **portas e adaptadores**: o núcleo (`domain` e `app`) define o que precisa por meio de interfaces (as *portas*, em `internal/app/ports.go`), e a infraestrutura (`internal/infra`) fornece as implementações (os *adaptadores*). As dependências apontam sempre para dentro:
+
+```
+   entrada                        núcleo                          saída
+┌────────────┐          ┌─────────────────────────┐          ┌──────────────────┐
+│ httpapi    │──chama──▶│ app (casos de uso)      │──porta──▶│ postgres (Store) │
+│ sqs        │          │   └─ domain (regras)    │──porta──▶│ sqs (Publisher)  │
+│ (consumer) │          │                         │          │                  │
+└────────────┘          └─────────────────────────┘          └──────────────────┘
+                 bootstrap (Fx) liga adaptadores às portas
+```
+
+Os motivos vêm dos requisitos do próprio problema:
+
+- **Dois canais de entrada, uma regra só.** A mesma operação chega por HTTP e por SQS e precisa ter exatamente o mesmo resultado, a mesma idempotência e o mesmo hash. Os dois adaptadores de entrada só traduzem o formato (header `Idempotency-Key` ou envelope SQS, token do header ou do atributo da mensagem) e chamam o mesmo caso de uso, `SubmitWager`. Nenhuma regra de negócio fica duplicada nos adaptadores, então os dois canais não têm como divergir.
+- **Regras financeiras testáveis isoladamente.** Saldo, estados da transação, reversões e códigos de rejeição ficam em `internal/domain`, que só depende da biblioteca padrão e de `uuid`. Os testes de unidade cobrem essas regras sem banco, rede ou containers, rápido e sem ambiguidade.
+- **Testes de integração reais, trocando só o que está sendo testado.** Os casos de uso rodam contra o PostgreSQL real através do adaptador verdadeiro. No relay da outbox, a porta `EventPublisher` permite testar a regra de falha, backoff e ordem com um publicador que falha de propósito; o adaptador SQS é testado à parte, contra o LocalStack real. Nenhuma das duas coisas precisa de mock de banco.
+- **Infraestrutura substituível sem tocar nas regras.** O SQS está atrás de `EventPublisher`; o banco, atrás de `Store` e dos repositórios. Trocar o broker por Kafka, por exemplo, seria um novo adaptador, sem mudança em `domain` ou `app`.
+- **Framework fora do núcleo.** O Uber Fx aparece só em `cmd/api` e `internal/bootstrap`. Os casos de uso são structs Go comuns, construídas com `app.NewService(...)`, fáceis de instanciar em testes e sem acoplamento ao ciclo de vida.
+- **Autorização no lugar certo.** A identidade (`Principal`) chega pronta do adaptador de entrada, já validada, mas a decisão de *quem pode o quê* (provedor só opera o próprio `providerId`, carteira só pelo serviço interno) é do caso de uso. A mesma regra vale para HTTP e SQS.
+
+**Onde fomos pragmáticos:** a arquitetura não esconde o que é essencial para a correção. A porta `Store.InTx` expõe explicitamente a transação, porque atomicidade entre saldo, ledger, inbox e outbox é requisito do negócio. Locks (`SELECT ... FOR UPDATE`), constraints e triggers ficam no PostgreSQL de propósito, porque são eles que garantem as invariantes entre várias instâncias (ver [ARCHITECTURE.md](ARCHITECTURE.md#1-princípio-geral-domínio-decide-banco-garante)). O custo da abordagem são mais interfaces e o mapeamento entre DTOs e o domínio; em troca, cada camada pode ser lida e testada sozinha.
