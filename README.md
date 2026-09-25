@@ -59,6 +59,15 @@ O `providerId` autorizado vem do token (claim `provider_id`), nunca do corpo da 
 
 ## Usar a API
 
+### Swagger (OpenAPI)
+
+Com o ambiente no ar, abra **http://localhost:8080/docs** (ou `8082`/`8083` para as outras instâncias). A documentação cobre todos os endpoints, com exemplos do caminho feliz e as respostas de erro possíveis de cada um.
+
+1. Clique em **Authorize** e, em `keycloak (OAuth2, clientCredentials)`, informe `client_id` e `client_secret` (ex.: `wallet-internal` / `wallet-internal-secret` para carteiras, `provider-a` / `provider-a-secret` para operações). O token é obtido no Keycloak pelo próprio navegador.
+2. Em cada endpoint, use **Try it out** para enviar a requisição.
+
+Para operações de provedor, autorize com o client do provedor; para carteiras, com `wallet-internal` (use **Logout** no Authorize para trocar). A especificação bruta fica em `http://localhost:8080/openapi.yaml` e no arquivo [`api/openapi.yaml`](api/openapi.yaml). A página carrega o Swagger UI de `cdn.jsdelivr.net`, então o navegador precisa de acesso à internet.
+
 ### Postman
 
 Importe **`postman/jungle-wallet.postman_collection.json`** e execute as pastas em ordem (ou pelo *Collection Runner*). Tokens e ids são salvos automaticamente em variáveis da collection. A collection cobre carteira, operações, replay, conflitos, casos de segurança e o fluxo pelo SQS.
@@ -108,6 +117,7 @@ Valores monetários são sempre **strings decimais** (`"25.00"`); um número JSO
 | `GET /wagering/transactions/{transactionId}` | provedor (próprias) ou interno |
 | `GET /providers/{providerId}/wagering/transactions/{externalTransactionId}` | o próprio provedor ou interno |
 | `GET /health/live`, `GET /health/ready` | público |
+| `GET /docs`, `GET /openapi.yaml` | público (documentação) |
 
 Status de `POST /wagering/transactions`: `201` processada, `200` replay, `202` aguardando a transação de referência, `422` rejeitada por regra de negócio (ex.: saldo insuficiente). Erros: `400` entrada inválida, `401` sem autenticação válida, `403` sem permissão, `404` não encontrado, `409` conflito de idempotência, `503` indisponibilidade transitória (com `Retry-After`). Detalhes no [ARCHITECTURE.md](ARCHITECTURE.md#9-api-http).
 
@@ -200,6 +210,9 @@ DATABASE_URL="postgres://apostas:apostas@localhost:5433/apostas?sslmode=disable"
 
 ```
 .
+├── api/
+│   ├── openapi.yaml                 # especificação OpenAPI 3 (servida em /openapi.yaml e /docs)
+│   └── embed.go                     # embute a especificação no binário
 ├── cmd/
 │   ├── api/
 │   │   └── main.go                  # entrada da aplicação: carrega a config e roda o Fx

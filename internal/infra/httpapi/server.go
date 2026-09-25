@@ -53,6 +53,10 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/health/live", s.live)
 	r.Get("/health/ready", s.ready)
 
+	// Documentação (pública): especificação OpenAPI e Swagger UI.
+	r.Get("/openapi.yaml", s.openAPISpec)
+	r.Get("/docs", s.docs)
+
 	r.Group(func(r chi.Router) {
 		r.Use(s.authenticate)
 
