@@ -44,5 +44,35 @@ services:
       retries: 30
       start_period: 20s
 
+  # Aplica as migrations e termina; a API só sobe depois que ele conclui.
+  migrate:
+    build: .
+    entrypoint: ["/app/migrate", "up"]
+    environment:
+      DATABASE_URL: postgres://apostas:apostas@postgres:5432/apostas?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    environment:
+      HTTP_PORT: "8080"
+      DATABASE_URL: postgres://apostas:apostas@postgres:5432/apostas?sslmode=disable
+      OIDC_ISSUER: http://localhost:8081/realms/wallet
+      OIDC_JWKS_URL: http://keycloak:8080/realms/wallet/protocol/openid-connect/certs
+      OIDC_AUDIENCE: wallet-api
+      SHUTDOWN_TIMEOUT: 20s
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    # Tempo entre SIGTERM e SIGKILL: maior que SHUTDOWN_TIMEOUT.
+    stop_grace_period: 30s
+
 volumes:
   pgdata:
