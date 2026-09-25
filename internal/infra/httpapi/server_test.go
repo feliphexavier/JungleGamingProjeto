@@ -346,6 +346,20 @@ func TestAuthorization(t *testing.T) {
 		})
 	}
 
+	// Token válido sem permissão: 403 antes de qualquer leitura do corpo.
+	none := e.idp.UnprivilegedToken(t)
+	for _, rt := range []struct{ method, path string }{
+		{"POST", "/wallets"},
+		{"GET", "/wallets/" + walletID},
+		{"POST", "/wagering/transactions"},
+		{"GET", "/wagering/transactions/" + txID},
+		{"GET", "/providers/provider-a/wagering/transactions/bet-1"},
+	} {
+		if res := e.do(rt.method, rt.path, none, `{"corpo":"inválido"`, "Idempotency-Key", "x"); res.status != 403 {
+			t.Errorf("sem permissão %s %s = %d %v, want 403", rt.method, rt.path, res.status, res.body)
+		}
+	}
+
 	// Provedor B não consegue reenviar a operação de A (nem como replay).
 	bBody := wagerBody(walletID, playerID, "BET", "10.00", "bet-1", "")
 	if res := e.submit(e.provB, "provider-a:bet-1", bBody); res.status != 403 {

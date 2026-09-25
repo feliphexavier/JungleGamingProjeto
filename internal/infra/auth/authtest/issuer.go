@@ -98,6 +98,12 @@ func (i *Issuer) InternalToken(t testing.TB) string {
 	return i.Sign(t, c)
 }
 
+// UnprivilegedToken emite um token válido sem provider_id nem papel interno.
+func (i *Issuer) UnprivilegedToken(t testing.TB) string {
+	t.Helper()
+	return i.Sign(t, i.base())
+}
+
 // ExpiredToken emite um token de provedor já expirado.
 func (i *Issuer) ExpiredToken(t testing.TB, providerID string) string {
 	t.Helper()

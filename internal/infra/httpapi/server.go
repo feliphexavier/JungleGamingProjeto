@@ -51,17 +51,46 @@ func (s *Server) Handler() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(s.authenticate)
 
-		r.Post("/wallets", s.openWallet)
-		r.Get("/wallets/{walletId}", s.getWallet)
-		r.Get("/wallets/{walletId}/ledger", s.listLedger)
-		r.Post("/wallets/{walletId}/reconciliation", s.reconcile)
+		// A permissão é verificada antes de ler o corpo: quem não tem acesso
+		// recebe 403 sem que a entrada seja processada. Os casos de uso repetem
+		// a verificação.
+		r.Group(func(r chi.Router) {
+			r.Use(s.require(func(p app.Principal) bool { return p.Internal }, "restrito ao serviço interno"))
+			r.Post("/wallets", s.openWallet)
+			r.Get("/wallets/{walletId}", s.getWallet)
+			r.Get("/wallets/{walletId}/ledger", s.listLedger)
+			r.Post("/wallets/{walletId}/reconciliation", s.reconcile)
+		})
 
-		r.Post("/wagering/transactions", s.submitWager)
-		r.Get("/wagering/transactions/{transactionId}", s.getTransaction)
-		r.Get("/providers/{providerId}/wagering/transactions/{externalTransactionId}", s.getTransactionByExternalID)
+		r.With(s.require(func(p app.Principal) bool { return p.ProviderID != "" }, "restrito a provedores")).
+			Post("/wagering/transactions", s.submitWager)
+
+		r.Group(func(r chi.Router) {
+			r.Use(s.require(func(p app.Principal) bool { return p.Internal || p.ProviderID != "" }, "sem permissão de consulta"))
+			r.Get("/wagering/transactions/{transactionId}", s.getTransaction)
+			r.Get("/providers/{providerId}/wagering/transactions/{externalTransactionId}", s.getTransactionByExternalID)
+		})
 	})
 	return r
 }
+
+// require recusa com 403 quem não atende à permissão da rota.
+func (s *Server) require(allowed func(app.Principal) bool, reason string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !allowed(principal(r.Context())) {
+				s.writeError(w, r, &forbiddenError{reason: reason})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+type forbiddenError struct{ reason string }
+
+func (e *forbiddenError) Error() string { return app.ErrForbidden.Error() + ": " + e.reason }
+func (e *forbiddenError) Unwrap() error { return app.ErrForbidden }
 
 func (s *Server) live(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "UP"})
