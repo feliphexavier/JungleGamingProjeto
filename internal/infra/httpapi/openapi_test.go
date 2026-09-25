@@ -49,6 +49,9 @@ func TestOpenAPIMatchesRoutes(t *testing.T) {
 
 	var documented []string
 	for path, item := range spec.Paths.Map() {
+		if len(item.Servers) > 0 {
+			continue // endpoint de outro servidor (token do Keycloak), não é rota desta API
+		}
 		for method := range item.Operations() {
 			documented = append(documented, method+" "+path)
 		}

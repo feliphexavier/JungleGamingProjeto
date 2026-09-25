@@ -63,6 +63,8 @@ O `providerId` autorizado vem do token (claim `provider_id`), nunca do corpo da 
 
 Com o ambiente no ar, abra **http://localhost:8080/docs** (ou `8082`/`8083` para as outras instâncias). A documentação cobre todos os endpoints, com exemplos do caminho feliz e as respostas de erro possíveis de cada um.
 
+A seção **Autenticação** documenta o endpoint de token do Keycloak (`POST /realms/wallet/protocol/openid-connect/token`, servidor `http://localhost:8081`), com as respostas de sucesso e de erro (secret errado, client inexistente, fluxo não permitido). A API não tem login próprio: ela só valida os tokens emitidos pelo Keycloak.
+
 1. Clique em **Authorize** e, em `keycloak (OAuth2, clientCredentials)`, informe `client_id` e `client_secret` (ex.: `wallet-internal` / `wallet-internal-secret` para carteiras, `provider-a` / `provider-a-secret` para operações). O token é obtido no Keycloak pelo próprio navegador.
 2. Em cada endpoint, use **Try it out** para enviar a requisição.
 

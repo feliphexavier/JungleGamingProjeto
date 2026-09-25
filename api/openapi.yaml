@@ -36,6 +36,13 @@ servers:
     description: Instância 3
 
 tags:
+  - name: Autenticação
+    description: |
+      A API não tem login próprio nem armazena senhas: a autenticação é feita no
+      **Keycloak** (IdP OAuth 2.0 / OIDC), e a API apenas valida localmente o token
+      emitido por ele (assinatura, emissor, audiência `wallet-api` e validade).
+      Este endpoint pertence ao Keycloak (`http://localhost:8081`) e está documentado
+      aqui porque é o primeiro passo para usar a API.
   - name: Carteiras
     description: Restritas ao serviço interno (`wallet-internal`).
   - name: Operações de provedores
@@ -48,6 +55,89 @@ security:
   - bearer: []
 
 paths:
+  /realms/wallet/protocol/openid-connect/token:
+    servers:
+      - url: http://localhost:8081
+        description: Keycloak (IdP)
+    post:
+      tags: [Autenticação]
+      summary: Obter access token (client_credentials)
+      description: |
+        Login de serviço para serviço: o provedor (ou o serviço interno) troca seu
+        `client_id` e `client_secret` por um access token JWT, que vai no header
+        `Authorization: Bearer <token>` das chamadas à API (ou no atributo
+        `Authorization` das mensagens SQS).
+
+        - O token vale **300 segundos**; peça um novo quando expirar (não há refresh token).
+        - O `provider_id` do provedor é um claim fixo configurado no client: o provedor
+          não consegue alterá-lo.
+        - As credenciais também podem ir em `Authorization: Basic` em vez do corpo.
+
+        Clients de exemplo (apenas ambiente local): `wallet-internal`, `provider-a`,
+        `provider-b`, `untrusted-client`, cada um com secret `<client_id>-secret`.
+
+        No Swagger, o botão **Authorize** já faz esta chamada automaticamente.
+      operationId: getToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id, client_secret]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [client_credentials]
+                  default: client_credentials
+                client_id:
+                  type: string
+                  example: provider-a
+                client_secret:
+                  type: string
+                  format: password
+                  example: provider-a-secret
+      responses:
+        '200':
+          description: Token emitido.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+              example:
+                access_token: eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIuLi4ifQ.eyJwcm92aWRlcl9pZCI6InByb3ZpZGVyLWEiLCJhdWQiOiJ3YWxsZXQtYXBpIn0.assinatura
+                expires_in: 300
+                refresh_expires_in: 0
+                token_type: Bearer
+                not-before-policy: 0
+                scope: email profile
+        '400':
+          description: |
+            Requisição inválida: falta `grant_type`, ou foi pedido um fluxo que o
+            client não permite (ex.: `password`; os clients só aceitam `client_credentials`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthError' }
+              examples:
+                missingGrant:
+                  summary: Sem grant_type
+                  value: { error: invalid_request, error_description: 'Missing form parameter: grant_type' }
+                grantNotAllowed:
+                  summary: Fluxo não permitido
+                  value: { error: unauthorized_client, error_description: Client not allowed for direct access grants }
+        '401':
+          description: client_id inexistente ou client_secret errado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthError' }
+              examples:
+                wrongSecret:
+                  summary: Secret errado
+                  value: { error: unauthorized_client, error_description: Invalid client or Invalid client credentials }
+                unknownClient:
+                  summary: Client inexistente
+                  value: { error: invalid_client, error_description: Invalid client or Invalid client credentials }
+
   /wallets:
     post:
       tags: [Carteiras]
@@ -668,6 +758,27 @@ components:
         difference: { amount: "0.00", currency: BRL }
         consistent: true
         checkedEntries: 2
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: "JWT assinado pelo Keycloak. Enviar como `Authorization: Bearer <access_token>`."
+        expires_in: { type: integer, description: Validade em segundos., example: 300 }
+        refresh_expires_in: { type: integer, example: 0 }
+        token_type: { type: string, example: Bearer }
+        not-before-policy: { type: integer, example: 0 }
+        scope: { type: string, example: email profile }
+
+    OAuthError:
+      type: object
+      description: Formato de erro do OAuth 2.0 (RFC 6749), definido pelo Keycloak.
+      properties:
+        error:
+          type: string
+          enum: [invalid_request, invalid_client, unauthorized_client, unsupported_grant_type]
+        error_description: { type: string }
 
     Health:
       type: object
