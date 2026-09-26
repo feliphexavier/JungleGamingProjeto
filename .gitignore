@@ -1,5 +1,6 @@
 /bin/
 *.env
 .env
-# Documento incluído apenas no commit final
-ARCHITECTURE.md
+
+# Guia de estudo local
+NEWBIE.md
