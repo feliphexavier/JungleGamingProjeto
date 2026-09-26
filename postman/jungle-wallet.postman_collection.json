@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Jungle Wallet (local)",
-    "description": "Testes manuais da API de carteiras contra o ambiente do Docker Compose.\n\nPré-requisito: `docker compose up --build`.\n\nOrdem sugerida: execute as pastas de cima para baixo (ou use o Collection Runner). Os tokens, o id da carteira e os ids das operações são salvos automaticamente em variáveis da collection.\n\nPortas: API 8080, Keycloak 8081, LocalStack (SQS) 4566.",
+    "description": "Testes manuais da API de carteiras contra o ambiente do Docker Compose.\n\nPré-requisito: `docker compose up --build -d --wait` (ver README).\n\nOrdem sugerida: execute as pastas de cima para baixo (ou use o Collection Runner). Os tokens, o id da carteira e os ids das operações são salvos automaticamente em variáveis da collection.\n\nPortas: API 8080, Keycloak 8081, LocalStack (SQS) 4566.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

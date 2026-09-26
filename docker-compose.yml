@@ -70,7 +70,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-      start_period: 20s
+      # A primeira subida de um container novo recompila o Keycloak (~1-3 min).
+      start_period: 240s
 
   # SQS local. As filas são criadas pelo hook deploy/localstack/init-queues.sh.
   localstack:

@@ -2,18 +2,72 @@
 
 Serviço em Go que processa operações financeiras de provedores de jogos (`BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK`) recebidas por HTTP e SQS. As decisões de projeto e os endpoints estão em [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Início rápido: reproduzir no Postman
+
+1. Clone o repositório e suba o ambiente (detalhes e pré-requisitos nas seções [1](#1-clonar) e [2](#2-subir-o-ambiente)):
+
+   ```bash
+   git clone https://github.com/feliphexavier/JungleGamingProjeto.git
+   cd JungleGamingProjeto
+   docker compose up --build -d --wait
+   ```
+
+   Espere o comando terminar (a primeira vez leva de 5 a 10 minutos).
+
+2. No Postman: **Import** → selecione o arquivo `postman/jungle-wallet.postman_collection.json`. Não é preciso criar environment nem configurar autenticação: as URLs já estão nas variáveis da collection, e os tokens, o `playerId`, o `walletId` e os ids das transações são gerados e salvos automaticamente pelos scripts das requisições.
+
+3. Execute as pastas **na ordem**, de cima para baixo:
+
+   | Pasta | O que demonstra |
+   |---|---|
+   | 0. Health | ambiente no ar |
+   | 1. Tokens (Keycloak) | obtém os tokens de cada client (rode antes das demais) |
+   | 2. Carteira | abre uma carteira com `100.00`, consulta saldo, ledger e reconciliação |
+   | 3. Operações do provedor (HTTP) | `BET`, replay idempotente, conflito `409`, `WIN`, `REFUND`, saldo insuficiente `422` |
+   | 4. Segurança | `401`, `403` e `404` para tokens ausentes, adulterados ou de outro provedor |
+   | 5. SQS (LocalStack) | envia operações pela fila, deduplicação, DLQ e leitura dos eventos publicados |
+
+   O jeito mais simples é rodar tudo de uma vez: clique com o botão direito na collection → **Run collection** → **Run**. Todas as requisições têm testes; o resultado esperado é tudo verde.
+
+4. Para repetir do zero, basta rodar a collection de novo: cada execução cria um jogador e uma carteira novos. Os tokens expiram em 5 minutos; se aparecer `401` inesperado, rode de novo a pasta **1. Tokens**.
+
 ## Pré-requisitos
 
-- Docker com Docker Compose v2
-- Go 1.27.1 (apenas para rodar os testes fora do Docker)
+| Ferramenta | Para quê |
+|---|---|
+| Git | clonar o repositório |
+| Docker com Docker Compose v2 (Docker Desktop no Windows/macOS, **em execução**) | subir o ambiente |
+| Um terminal bash: Linux/macOS nativo, ou **Git Bash** no Windows | todos os comandos deste README (não funcionam no PowerShell/cmd) |
+| `curl` | chamar a API (já vem com o Git Bash) |
+| Go 1.27.1 | apenas para rodar os testes fora do Docker |
 
-## Subir o ambiente
+Portas que precisam estar livres no host: `8080`, `8081`, `8082`, `8083`, `4566` e `5433`.
+
+## 1. Clonar
 
 ```bash
-docker compose up --build
+git clone https://github.com/feliphexavier/JungleGamingProjeto.git
+cd JungleGamingProjeto
 ```
 
-Sobe PostgreSQL, Keycloak, LocalStack (SQS), aplica as migrations e inicia três instâncias da API.
+Nenhum arquivo `.env` é necessário para subir pelo Docker: toda a configuração já está no `docker-compose.yml`.
+
+## 2. Subir o ambiente
+
+```bash
+docker compose up --build -d --wait
+```
+
+Sobe PostgreSQL, Keycloak, LocalStack (SQS), aplica as migrations e inicia três instâncias da API. O comando só devolve o terminal quando tudo estiver saudável.
+
+**A primeira execução é lenta (5 a 10 minutos)**: baixa as imagens, compila a aplicação e o Keycloak leva de 1 a 3 minutos para iniciar. As próximas execuções levam segundos.
+
+Verificar:
+
+```bash
+curl http://localhost:8080/health/ready
+# -> {"checks":{"postgres":"UP","sqs":"UP"},"status":"UP"}
+```
 
 | Serviço | Endereço |
 |---|---|
@@ -23,11 +77,9 @@ Sobe PostgreSQL, Keycloak, LocalStack (SQS), aplica as migrations e inicia três
 | LocalStack (SQS) | http://localhost:4566 |
 | PostgreSQL | `localhost:5433`, usuário/senha/banco `apostas` |
 
-Verificar: `curl http://localhost:8080/health/ready`
+Logs: `docker compose logs -f api`. Parar: `docker compose down` (use `-v` para apagar também os dados).
 
-Parar: `docker compose down` (use `-v` para apagar os dados).
-
-## Credenciais (ambiente local)
+## 3. Credenciais (ambiente local)
 
 | client_id | client_secret | Permissão |
 |---|---|---|
@@ -38,9 +90,11 @@ Parar: `docker compose down` (use `-v` para apagar os dados).
 
 No Swagger, clique em **Authorize** e informe `client_id` e `client_secret`. Também há uma collection do Postman em `postman/jungle-wallet.postman_collection.json`.
 
-## Fluxo de requisições (curl, bash / Git Bash)
+## 4. Fluxo de requisições (bash / Git Bash)
 
-1. Obter os tokens no Keycloak:
+Rode os blocos em sequência **no mesmo terminal**: cada um usa as variáveis definidas nos anteriores.
+
+1. Obter os tokens no Keycloak. Os tokens expiram em 5 minutos; se alguma chamada devolver `401`, rode este bloco de novo.
 
 ```bash
 token() {
@@ -53,16 +107,20 @@ PROVIDER_A=$(token provider-a)
 PLAYER=0192f28f-5dc0-7d58-bdb2-6a9c8e0f1234
 ```
 
-2. Abrir a carteira (serviço interno):
+2. Abrir a carteira (serviço interno) e guardar o `walletId`:
 
 ```bash
-curl -s -X POST http://localhost:8080/wallets \
+RESP=$(curl -s -X POST http://localhost:8080/wallets \
   -H "Authorization: Bearer $INTERNAL" -H 'Content-Type: application/json' \
-  -d "{\"playerId\":\"$PLAYER\",\"initialBalance\":{\"amount\":\"100.00\",\"currency\":\"BRL\"}}"
-# -> 201 {"id":"<walletId>", ... "balance":{"amount":"100.00","currency":"BRL"}, "version":1}
+  -d "{\"playerId\":\"$PLAYER\",\"initialBalance\":{\"amount\":\"100.00\",\"currency\":\"BRL\"}}")
+echo "$RESP"
+# -> {"id":"<walletId>", ... "balance":{"amount":"100.00","currency":"BRL"}, "version":1}
 
-WALLET=<walletId da resposta>
+WALLET=$(echo "$RESP" | sed -E 's/.*"id":"([^"]+)".*/\1/')
+echo "$WALLET"
 ```
+
+Cada jogador tem uma única carteira: rodar este bloco de novo com o mesmo `PLAYER` devolve `409`. Para abrir outra, troque o `PLAYER` por outro UUID.
 
 3. Enviar uma aposta por HTTP (provedor). Repetir o comando com o mesmo `$EXT` devolve `200` com `idempotentReplay: true`; a mesma chave com outro conteúdo devolve `409`.
 
@@ -74,6 +132,7 @@ curl -s -X POST http://localhost:8080/wagering/transactions \
   -d "{\"providerId\":\"provider-a\",\"externalTransactionId\":\"$EXT\",
        \"playerId\":\"$PLAYER\",\"walletId\":\"$WALLET\",\"roundId\":\"round-987\",
        \"gameId\":\"fortune-chimp\",\"kind\":\"BET\",\"money\":{\"amount\":\"25.00\",\"currency\":\"BRL\"}}"
+# -> {"transactionId":"...","status":"PROCESSED","balance":{"amount":"75.00","currency":"BRL"},"idempotentReplay":false}
 ```
 
 Valores monetários são sempre strings decimais (`"25.00"`); um número JSON (`25.00`) é recusado com `400`.
@@ -94,18 +153,24 @@ MSYS_NO_PATHCONV=1 docker compose exec -T localstack awslocal sqs send-message \
   --message-attributes "{\"Authorization\":{\"DataType\":\"String\",\"StringValue\":\"Bearer $PROVIDER_A\"}}"
 ```
 
-(`MSYS_NO_PATHCONV=1` só é necessário no Git Bash do Windows.)
+(`MSYS_NO_PATHCONV=1` só é necessário no Git Bash do Windows; nos demais é ignorado.)
 
-5. Ler os eventos publicados:
+5. Conferir o saldo (deve ser `65.00` depois das duas apostas):
+
+```bash
+curl -s http://localhost:8080/wallets/$WALLET -H "Authorization: Bearer $INTERNAL"
+```
+
+6. Ler os eventos publicados:
 
 ```bash
 docker compose exec -T localstack awslocal sqs receive-message \
   --queue-url http://localhost:4566/000000000000/wallet-events.fifo --max-number-of-messages 10
 ```
 
-## Testes
+## 5. Testes
 
-Com o ambiente no ar:
+Com o ambiente no ar (passo 2), na raiz do repositório:
 
 ```bash
 export TEST_DATABASE_URL="postgres://apostas:apostas@localhost:5433/postgres?sslmode=disable"
@@ -114,17 +179,27 @@ export TEST_SQS_ENDPOINT="http://localhost:4566"
 export TEST_API_URLS="http://localhost:8080,http://localhost:8082,http://localhost:8083"
 
 go test ./...
-go test -race ./...
 go vet ./...
 gofmt -l .
 ```
 
-Sem essas variáveis, os testes de integração são pulados.
+Sem essas variáveis, os testes de integração são pulados. A suíte completa leva cerca de 1 minuto: são testes de integração contra o PostgreSQL, o Keycloak e o SQS reais, e alguns esperam de propósito pelos ciclos de leitura da fila.
 
-No Windows, `go test -race` exige um compilador C. Sem ele, rode pelo container Go (Git Bash):
+### Detector de corrida (`-race`)
+
+O `-race` precisa de cgo, ou seja, de um compilador C (gcc).
+
+**Linux/macOS** (com gcc ou clang instalado), no mesmo terminal dos `export` acima:
+
+```bash
+go test -race ./...
+```
+
+**Windows**: o Go não traz compilador C, e `go test -race` falha com `go: -race requires cgo; enable cgo by setting CGO_ENABLED=1`. Rode pelo container Go, que já tem o gcc (Git Bash, na raiz do repositório, com o ambiente no ar). A primeira execução leva uns 3 minutos porque baixa as dependências e compila tudo com instrumentação de corrida; os volumes `jungle-go-mod` e `jungle-go-build` guardam esse trabalho, e as seguintes levam cerca de 1 minuto (o tempo dos próprios testes de integração). Sem mudança no código, o Go reaproveita o resultado anterior; acrescente `-count=1` para forçar a execução:
 
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/src" -w /src \
+  -v jungle-go-mod:/go/pkg/mod -v jungle-go-build:/root/.cache/go-build \
   -e TEST_DATABASE_URL="postgres://apostas:apostas@host.docker.internal:5433/postgres?sslmode=disable" \
   -e TEST_KEYCLOAK_URL="http://host.docker.internal:8081" \
   -e TEST_SQS_ENDPOINT="http://host.docker.internal:4566" \
@@ -132,6 +207,26 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/src" -w /src \
   golang:1.27.1 go test -race ./...
 ```
 
+Alternativa sem Docker: instale um gcc para Windows (por exemplo o [MSYS2](https://www.msys2.org/) com o pacote `mingw-w64-ucrt-x86_64-gcc`), coloque a pasta `bin` dele no `PATH` e rode `CGO_ENABLED=1 go test -race ./...`.
+
+## Problemas comuns
+
+| Sintoma | Causa e solução |
+|---|---|
+| `Cannot connect to the Docker daemon` / `error during connect` | O Docker Desktop não está aberto. Abra-o e espere ficar "running". |
+| `port is already allocated` / `address already in use` | Outro processo usa uma das portas listadas nos pré-requisitos. Pare-o, ou rode `docker compose down` se for uma subida anterior deste projeto. |
+| `dependency failed to start: container ... is unhealthy` | Algum serviço demorou mais que o esperado (máquina lenta na primeira subida). Rode `docker compose up -d --wait` de novo; os containers já criados continuam de onde pararam. Para ver o motivo: `docker compose logs keycloak` (ou `localstack`, `postgres`, `migrate`). |
+| `go: -race requires cgo` no Windows | Falta compilador C. Rode o `-race` pelo container Go (seção [Detector de corrida](#detector-de-corrida--race)). |
+| `401` nas chamadas | Token expirado (5 minutos). Rode de novo o bloco 1 do fluxo. |
+| `409` ao abrir carteira | Já existe carteira para esse `PLAYER`. Use outro UUID. |
+| `gofmt -l .` lista arquivos no Windows | O clone foi feito antes do `.gitattributes` forçar LF. Rode `git rm --cached -rq . && git reset --hard` (descarta alterações locais não commitadas). |
+| Quero recomeçar do zero | `docker compose down -v` e depois o passo 2. |
+
 ## Configuração
 
-As variáveis de ambiente, com valores locais de exemplo, estão em [.env.example](.env.example).
+As variáveis de ambiente, com valores locais de exemplo, estão em [.env.example](.env.example). Só são necessárias para rodar a API fora do Docker, apontando para os serviços do Compose. A aplicação lê variáveis de ambiente, não o arquivo; carregue-o no shell antes (troque `HTTP_PORT` se a API do Compose estiver ocupando a `8080`):
+
+```bash
+set -a; . ./.env.example; set +a
+HTTP_PORT=9090 go run ./cmd/api
+```
