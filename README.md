@@ -185,30 +185,6 @@ gofmt -l .
 
 Sem essas variáveis, os testes de integração são pulados. A suíte completa leva cerca de 1 minuto: são testes de integração contra o PostgreSQL, o Keycloak e o SQS reais, e alguns esperam de propósito pelos ciclos de leitura da fila.
 
-### Detector de corrida (`-race`)
-
-O `-race` precisa de cgo, ou seja, de um compilador C (gcc).
-
-**Linux/macOS** (com gcc ou clang instalado), no mesmo terminal dos `export` acima:
-
-```bash
-go test -race ./...
-```
-
-**Windows**: o Go não traz compilador C, e `go test -race` falha com `go: -race requires cgo; enable cgo by setting CGO_ENABLED=1`. Rode pelo container Go, que já tem o gcc (Git Bash, na raiz do repositório, com o ambiente no ar). A primeira execução leva uns 3 minutos porque baixa as dependências e compila tudo com instrumentação de corrida; os volumes `jungle-go-mod` e `jungle-go-build` guardam esse trabalho, e as seguintes levam cerca de 1 minuto (o tempo dos próprios testes de integração). Sem mudança no código, o Go reaproveita o resultado anterior; acrescente `-count=1` para forçar a execução:
-
-```bash
-MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/src" -w /src \
-  -v jungle-go-mod:/go/pkg/mod -v jungle-go-build:/root/.cache/go-build \
-  -e TEST_DATABASE_URL="postgres://apostas:apostas@host.docker.internal:5433/postgres?sslmode=disable" \
-  -e TEST_KEYCLOAK_URL="http://host.docker.internal:8081" \
-  -e TEST_SQS_ENDPOINT="http://host.docker.internal:4566" \
-  -e TEST_API_URLS="http://host.docker.internal:8080,http://host.docker.internal:8082,http://host.docker.internal:8083" \
-  golang:1.27.1 go test -race ./...
-```
-
-Alternativa sem Docker: instale um gcc para Windows (por exemplo o [MSYS2](https://www.msys2.org/) com o pacote `mingw-w64-ucrt-x86_64-gcc`), coloque a pasta `bin` dele no `PATH` e rode `CGO_ENABLED=1 go test -race ./...`.
-
 ## Problemas comuns
 
 | Sintoma | Causa e solução |
@@ -216,7 +192,6 @@ Alternativa sem Docker: instale um gcc para Windows (por exemplo o [MSYS2](https
 | `Cannot connect to the Docker daemon` / `error during connect` | O Docker Desktop não está aberto. Abra-o e espere ficar "running". |
 | `port is already allocated` / `address already in use` | Outro processo usa uma das portas listadas nos pré-requisitos. Pare-o, ou rode `docker compose down` se for uma subida anterior deste projeto. |
 | `dependency failed to start: container ... is unhealthy` | Algum serviço demorou mais que o esperado (máquina lenta na primeira subida). Rode `docker compose up -d --wait` de novo; os containers já criados continuam de onde pararam. Para ver o motivo: `docker compose logs keycloak` (ou `localstack`, `postgres`, `migrate`). |
-| `go: -race requires cgo` no Windows | Falta compilador C. Rode o `-race` pelo container Go (seção [Detector de corrida](#detector-de-corrida--race)). |
 | `401` nas chamadas | Token expirado (5 minutos). Rode de novo o bloco 1 do fluxo. |
 | `409` ao abrir carteira | Já existe carteira para esse `PLAYER`. Use outro UUID. |
 | `gofmt -l .` lista arquivos no Windows | O clone foi feito antes do `.gitattributes` forçar LF. Rode `git rm --cached -rq . && git reset --hard` (descarta alterações locais não commitadas). |
