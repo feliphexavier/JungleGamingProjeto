@@ -5,7 +5,7 @@
 // Variáveis (sem TEST_API_URLS o teste é pulado):
 //   - TEST_API_URLS: URLs das instâncias separadas por vírgula
 //     (ex.: http://localhost:8080,http://localhost:8082,http://localhost:8083)
-//   - TEST_KEYCLOAK_URL: ex.: http://localhost:8081
+//   - TEST_KEYCLOAK_URL: ex.: http://127.0.0.1:8081
 //   - TEST_SQS_ENDPOINT: ex.: http://localhost:4566
 package e2e
 

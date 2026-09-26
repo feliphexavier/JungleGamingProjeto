@@ -3,7 +3,7 @@
 //
 // Variáveis:
 //   - TEST_KEYCLOAK_URL: URL base do Keycloak alcançável pelo teste
-//     (ex.: http://localhost:8081). Sem ela, o teste é pulado.
+//     (ex.: http://127.0.0.1:8081). Sem ela, o teste é pulado.
 //   - TEST_OIDC_ISSUER: emissor esperado nos tokens (padrão
 //     http://localhost:8081/realms/wallet, fixado por KC_HOSTNAME no Compose).
 package kctest

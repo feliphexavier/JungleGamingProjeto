@@ -73,7 +73,7 @@ curl http://localhost:8080/health/ready
 |---|---|
 | API | http://localhost:8080, http://localhost:8082, http://localhost:8083 |
 | Swagger | http://localhost:8080/docs |
-| Keycloak | http://localhost:8081 (admin: `admin` / `admin`) |
+| Keycloak | http://127.0.0.1:8081 (admin: `admin` / `admin`) |
 | LocalStack (SQS) | http://localhost:4566 |
 | PostgreSQL | `localhost:5433`, usuário/senha/banco `apostas` |
 
@@ -98,7 +98,7 @@ Rode os blocos em sequência **no mesmo terminal**: cada um usa as variáveis de
 
 ```bash
 token() {
-  curl -s -X POST http://localhost:8081/realms/wallet/protocol/openid-connect/token \
+  curl -s -X POST http://127.0.0.1:8081/realms/wallet/protocol/openid-connect/token \
     -d grant_type=client_credentials -d client_id="$1" -d client_secret="$1-secret" \
     | sed -E 's/.*"access_token":"([^"]+)".*/\1/'
 }
@@ -174,7 +174,7 @@ Com o ambiente no ar (passo 2), na raiz do repositório:
 
 ```bash
 export TEST_DATABASE_URL="postgres://apostas:apostas@localhost:5433/postgres?sslmode=disable"
-export TEST_KEYCLOAK_URL="http://localhost:8081"
+export TEST_KEYCLOAK_URL="http://127.0.0.1:8081"
 export TEST_SQS_ENDPOINT="http://localhost:4566"
 export TEST_API_URLS="http://localhost:8080,http://localhost:8082,http://localhost:8083"
 

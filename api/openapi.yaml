@@ -41,7 +41,7 @@ tags:
       A API não tem login próprio nem armazena senhas: a autenticação é feita no
       **Keycloak** (IdP OAuth 2.0 / OIDC), e a API apenas valida localmente o token
       emitido por ele (assinatura, emissor, audiência `wallet-api` e validade).
-      Este endpoint pertence ao Keycloak (`http://localhost:8081`) e está documentado
+      Este endpoint pertence ao Keycloak (`http://127.0.0.1:8081`) e está documentado
       aqui porque é o primeiro passo para usar a API.
   - name: Carteiras
     description: Restritas ao serviço interno (`wallet-internal`).
@@ -57,7 +57,7 @@ security:
 paths:
   /realms/wallet/protocol/openid-connect/token:
     servers:
-      - url: http://localhost:8081
+      - url: http://127.0.0.1:8081
         description: Keycloak (IdP)
     post:
       tags: [Autenticação]
@@ -531,7 +531,7 @@ components:
         client_id e client_secret (ex.: `provider-a` / `provider-a-secret`).
       flows:
         clientCredentials:
-          tokenUrl: http://localhost:8081/realms/wallet/protocol/openid-connect/token
+          tokenUrl: http://127.0.0.1:8081/realms/wallet/protocol/openid-connect/token
           scopes: {}
     bearer:
       type: http

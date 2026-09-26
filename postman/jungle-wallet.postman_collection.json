@@ -27,7 +27,7 @@
   ],
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "kcUrl", "value": "http://localhost:8081/realms/wallet/protocol/openid-connect/token" },
+    { "key": "kcUrl", "value": "http://127.0.0.1:8081/realms/wallet/protocol/openid-connect/token" },
     { "key": "sqsUrl", "value": "http://localhost:4566" },
     { "key": "queuePrefix", "value": "http://localhost:4566/000000000000" },
     { "key": "tokenInternal", "value": "" },
