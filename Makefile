@@ -1,5 +1,5 @@
 # Atalhos opcionais; os comandos equivalentes estão no README.
-.PHONY: up down clean test test-race vet fmt migrate migrate-status
+.PHONY: up down clean test vet fmt migrate migrate-status
 
 TEST_ENV = TEST_DATABASE_URL="postgres://apostas:apostas@localhost:5433/postgres?sslmode=disable" \
 	TEST_KEYCLOAK_URL="http://127.0.0.1:8081" \
@@ -17,9 +17,6 @@ clean:
 
 test:
 	$(TEST_ENV) go test ./...
-
-test-race:
-	$(TEST_ENV) go test -race ./...
 
 vet:
 	go vet ./...
